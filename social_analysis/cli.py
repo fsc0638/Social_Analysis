@@ -44,7 +44,11 @@ def cmd_report(args):
     df = fetch_analyses_joined(keyword=args.keyword)
     trends = compute_trends(df)
     print(f"總筆數: {trends.get('total', 0)}, 平均情感: {trends.get('avg_sentiment', 0):.2f}")
-    title, body = generate_article(args.keyword, trends)
+    title, body = generate_article(
+        args.keyword, trends,
+        fmt=args.format,
+        critique=args.critique,
+    )
     where = publish(title, body, target=args.publish)
     save_article(args.keyword, title, body, published_to=where)
     print(f"已產出文章: {title}\n推送目標: {where}")
@@ -86,17 +90,23 @@ def build_parser():
 
     sp = sub.add_parser("report"); add_common(sp)
     sp.add_argument("--publish", default=None, help="file|webhook|email,預設讀 .env")
+    sp.add_argument("--format", default="analysis", choices=["analysis", "brief", "social"])
+    sp.add_argument("--critique", action="store_true", help="啟用 LLM self-critique 二次潤稿")
     sp.set_defaults(func=cmd_report)
 
     sp = sub.add_parser("run-all"); add_common(sp)
     sp.add_argument("--platforms", default="mock")
     sp.add_argument("--publish", default=None)
+    sp.add_argument("--format", default="analysis", choices=["analysis", "brief", "social"])
+    sp.add_argument("--critique", action="store_true")
     sp.set_defaults(func=cmd_run_all)
 
     sp = sub.add_parser("schedule"); add_common(sp)
     sp.add_argument("--platforms", default="mock")
     sp.add_argument("--interval-hours", type=int, default=6)
     sp.add_argument("--publish", default=None)
+    sp.add_argument("--format", default="analysis", choices=["analysis", "brief", "social"])
+    sp.add_argument("--critique", action="store_true")
     sp.set_defaults(func=cmd_schedule)
 
     return p
