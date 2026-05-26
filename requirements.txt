@@ -1,0 +1,13 @@
+python-dotenv>=1.0.0
+pydantic>=2.0
+httpx>=0.27
+sqlalchemy>=2.0
+pandas>=2.0
+streamlit>=1.30
+plotly>=5.18
+anthropic>=0.40
+apscheduler>=3.10
+tenacity>=8.2
+# Platform collectors (optional, install as needed)
+# instaloader>=4.11
+# twscrape>=0.13
