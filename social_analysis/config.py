@@ -8,6 +8,9 @@ load_dotenv()
 @dataclass
 class Settings:
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    openai_api_key: str = os.getenv("OPENAI_API_KEY", "")
+    gemini_api_key: str = os.getenv("GEMINI_API_KEY", "")
+    llm_provider: str = os.getenv("LLM_PROVIDER", "openai")
     x_bearer_token: str = os.getenv("X_BEARER_TOKEN", "")
     x_use_scraper: bool = os.getenv("X_USE_SCRAPER", "false").lower() == "true"
     ig_username: str = os.getenv("IG_USERNAME", "")

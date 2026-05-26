@@ -23,11 +23,19 @@ class InstagramCollector(Collector):
 
         L = instaloader.Instaloader(download_pictures=False, download_videos=False,
                                     download_video_thumbnails=False, save_metadata=False)
-        if settings.ig_username and settings.ig_password:
+        if settings.ig_username:
             try:
-                L.login(settings.ig_username, settings.ig_password)
+                L.load_session_from_file(settings.ig_username)
+            except FileNotFoundError:
+                if settings.ig_password:
+                    try:
+                        L.login(settings.ig_username, settings.ig_password)
+                        L.save_session_to_file()
+                    except Exception as e:
+                        print(f"[instagram] 登入失敗: {e}")
+                        print("[instagram] 請在終端機執行: python3 -m instaloader --login <帳號>")
             except Exception as e:
-                print(f"[instagram] 登入失敗,改用匿名模式: {e}")
+                print(f"[instagram] 載入 session 失敗: {e}")
 
         tag = keyword.lstrip("#")
         posts: list[Post] = []

@@ -55,6 +55,52 @@ def _extract_quote_blocks(trends: dict) -> tuple[str, str, str]:
     return quotes, pos_block, neg_block
 
 
+# ---------- OpenAI 流程 ----------
+def _generate_openai(client, keyword, trends, fmt, critique, model):
+    oai_model = model if not model.startswith("claude") else "gpt-4o-mini"
+    quotes, pos_quotes, neg_quotes = _extract_quote_blocks(trends)
+    system_text = P.SYSTEM_PROMPT + "\n\n# 本次格式要求\n" + P.FORMAT_HINTS[fmt]
+    user_text = P.USER_TEMPLATE.format(
+        keyword=keyword,
+        total=trends.get("total", 0),
+        sentiment_dist=__import__("json").dumps(trends.get("sentiment_dist", {}), ensure_ascii=False),
+        avg_sentiment=trends.get("avg_sentiment", 0),
+        platform_dist=__import__("json").dumps(trends.get("platform_dist", {}), ensure_ascii=False),
+        top_topics=__import__("json").dumps(trends.get("top_topics", []), ensure_ascii=False),
+        quotes_block=quotes,
+        positive_quotes=pos_quotes,
+        negative_quotes=neg_quotes,
+        fmt=fmt,
+    )
+    messages = [
+        {"role": "system", "content": system_text},
+        {"role": "user", "content": P.FEWSHOT_USER},
+        {"role": "assistant", "content": P.FEWSHOT_ASSISTANT},
+        {"role": "user", "content": user_text},
+    ]
+    try:
+        resp = client.chat.completions.create(model=oai_model, max_tokens=2048, messages=messages)
+        draft = resp.choices[0].message.content.strip()
+    except Exception as e:
+        print(f"[article] OpenAI 失敗,fallback: {e}")
+        return _fallback(keyword, trends, fmt)
+
+    if critique:
+        try:
+            resp2 = client.chat.completions.create(
+                model=oai_model, max_tokens=2048,
+                messages=[{"role": "system", "content": system_text},
+                           {"role": "user", "content": P.CRITIQUE_PROMPT.format(draft=draft)}],
+            )
+            draft = resp2.choices[0].message.content.strip()
+        except Exception as e:
+            print(f"[article] critique 失敗,保留第一稿: {e}")
+
+    first_line = next((ln for ln in draft.splitlines() if ln.strip()), "")
+    title = first_line.lstrip("#").strip() or f"{keyword} 輿情分析"
+    return title, draft
+
+
 # ---------- 主流程 ----------
 def generate_article(
     keyword: str,
@@ -65,13 +111,26 @@ def generate_article(
 ) -> tuple[str, str]:
     if trends.get("total", 0) == 0:
         return _fallback(keyword, trends, fmt)
-    if not settings.anthropic_api_key:
-        return _fallback(keyword, trends, fmt)
+    provider = settings.llm_provider
 
-    try:
-        from anthropic import Anthropic
-        client = Anthropic(api_key=settings.anthropic_api_key)
-    except Exception:
+    if provider == "openai":
+        if not settings.openai_api_key:
+            return _fallback(keyword, trends, fmt)
+        try:
+            from openai import OpenAI
+            oai_client = OpenAI(api_key=settings.openai_api_key)
+        except Exception:
+            return _fallback(keyword, trends, fmt)
+        return _generate_openai(oai_client, keyword, trends, fmt, critique, model)
+    elif provider == "anthropic":
+        if not settings.anthropic_api_key:
+            return _fallback(keyword, trends, fmt)
+        try:
+            from anthropic import Anthropic
+            client = Anthropic(api_key=settings.anthropic_api_key)
+        except Exception:
+            return _fallback(keyword, trends, fmt)
+    else:
         return _fallback(keyword, trends, fmt)
 
     quotes, pos_quotes, neg_quotes = _extract_quote_blocks(trends)
