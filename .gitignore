@@ -12,6 +12,11 @@ venv/
 .env
 *.env.local
 
+# Photo Agent — 帳號憑證與 session（不入版控）
+accounts/
+ig_session.json
+photos/
+
 # Data
 *.db
 *.sqlite
