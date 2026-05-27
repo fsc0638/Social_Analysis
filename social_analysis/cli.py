@@ -379,10 +379,11 @@ def _random_time_in_window(h_start, m_start, h_end, m_end):
 
 def cmd_photo_schedule(args):
     from apscheduler.schedulers.blocking import BlockingScheduler
-    from apscheduler.events import EVENT_JOB_EXECUTED
     from .photo_agent.agent import PhotoAgent
     from .photo_agent.engager import run_session
     import random
+    import threading
+    from datetime import datetime as _dt
 
     accounts = _load_accounts(args.account)
     if not accounts:
@@ -403,8 +404,12 @@ def cmd_photo_schedule(args):
             print(f"[scheduler] {acc.name} 每天 {t} 發文")
 
     # ── 互動巡迴排程（四個時段，每天重新隨機化時間點）──
-    def _schedule_engage_jobs():
-        """移除舊的 engage jobs 並重新以隨機時間點排入今天的巡迴。"""
+    def _schedule_engage_jobs(catchup: bool = False):
+        """移除舊的 engage jobs 並重新以隨機時間點排入今天的巡迴。
+        catchup=True 時，對今天已過的時段立刻在背景補跑一次。"""
+        now = _dt.now()
+        now_total = now.hour * 60 + now.minute
+
         for acc in accounts:
             if not acc.engage_hashtags:
                 continue
@@ -423,10 +428,19 @@ def cmd_photo_schedule(args):
                 )
                 print(f"[scheduler] {acc.name} 互動巡迴 時段{i+1} → {h:02d}:{m:02d}")
 
+                # 補跑：排程器啟動時若該時段已過，立刻在背景執行一次
+                if catchup:
+                    window_end = he * 60 + me
+                    if now_total > window_end:
+                        print(f"[scheduler] {acc.name} 時段{i+1} 已過，立刻補跑")
+                        threading.Thread(
+                            target=run_session, args=[acc], daemon=True
+                        ).start()
+
     # 每天 00:01 重新隨機化各時段時間點
     sched.add_job(_schedule_engage_jobs, "cron", hour=0, minute=1, id="daily_reschedule")
-    # 啟動時先跑一次
-    _schedule_engage_jobs()
+    # 啟動時先跑一次，並補跑已過的時段
+    _schedule_engage_jobs(catchup=True)
 
     print("[scheduler] 啟動，按 Ctrl+C 停止")
     try:
