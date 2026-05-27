@@ -367,6 +367,15 @@ def cmd_photo_comment(args):
         run_comment_session(acc)
 
 
+def cmd_photo_analyze_competitors(args):
+    """搜尋風格相似帳號並進行競品分析，結果記憶到 memory/competitor_analysis/。"""
+    from .photo_agent.competitor_analyzer import run_competitor_analysis
+    accounts = _load_accounts(args.account)
+    target = getattr(args, "target", None)
+    for acc in accounts:
+        run_competitor_analysis(acc, target_username=target)
+
+
 # 互動巡迴時段設定（每個時段在區間內隨機選一個時間點觸發）
 _ENGAGE_WINDOWS = [
     (9, 30, 10, 0),    # 09:30–10:00
@@ -558,6 +567,11 @@ def build_parser():
     sp = sub.add_parser("photo-comment", help="手動觸發一次智慧留言巡迴")
     sp.add_argument("--account", default="", help="指定帳號，不填則執行所有帳號")
     sp.set_defaults(func=cmd_photo_comment)
+
+    sp = sub.add_parser("photo-analyze-competitors", help="搜尋風格相似帳號並進行競品分析（15% 貼文抽樣，最多 10 帳號）")
+    sp.add_argument("--account", default="", help="指定我方帳號，不填則執行所有帳號")
+    sp.add_argument("--target", default=None, help="指定特定競品帳號 username（不填則自動搜尋）")
+    sp.set_defaults(func=cmd_photo_analyze_competitors)
 
     return p
 
