@@ -39,6 +39,13 @@ class AccountConfig:
     engage_max_per_session: int = 12
     engage_daily_max: int = 80
 
+    # ── 智慧留言（commenter）──────────────────────────
+    comment_enabled: bool = False
+    comment_style: str = ""
+    comment_max_per_session: int = 6
+    comment_daily_max: int = 25
+    comment_confidence_threshold: int = 75
+
     # ── 路徑 ──────────────────────────────────────────
     @property
     def base_dir(self) -> Path:

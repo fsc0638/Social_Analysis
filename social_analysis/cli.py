@@ -352,11 +352,19 @@ def cmd_photo_status(args):
 
 
 def cmd_photo_engage(args):
-    """手動觸發一次互動巡迴。"""
+    """手動觸發一次互動巡迴（按愛心）。"""
     from .photo_agent.engager import run_session
     accounts = _load_accounts(args.account)
     for acc in accounts:
         run_session(acc)
+
+
+def cmd_photo_comment(args):
+    """手動觸發一次智慧留言巡迴。"""
+    from .photo_agent.commenter import run_comment_session
+    accounts = _load_accounts(args.account)
+    for acc in accounts:
+        run_comment_session(acc)
 
 
 # 互動巡迴時段設定（每個時段在區間內隨機選一個時間點觸發）
@@ -381,6 +389,7 @@ def cmd_photo_schedule(args):
     from apscheduler.schedulers.blocking import BlockingScheduler
     from .photo_agent.agent import PhotoAgent
     from .photo_agent.engager import run_session
+    from .photo_agent.commenter import run_comment_session
     import random
     import threading
     from datetime import datetime as _dt
@@ -428,13 +437,46 @@ def cmd_photo_schedule(args):
                 )
                 print(f"[scheduler] {acc.name} 互動巡迴 時段{i+1} → {h:02d}:{m:02d}")
 
-                # 補跑：排程器啟動時若該時段已過，立刻在背景執行一次
+                        # 補跑：排程器啟動時若該時段已過，立刻在背景執行一次
                 if catchup:
                     window_end = he * 60 + me
                     if now_total > window_end:
-                        print(f"[scheduler] {acc.name} 時段{i+1} 已過，立刻補跑")
+                        print(f"[scheduler] {acc.name} 時段{i+1} 已過，立刻補跑（按愛心）")
                         threading.Thread(
                             target=run_session, args=[acc], daemon=True
+                        ).start()
+
+            # ── 留言巡迴：與按愛心同時段，但時間點錯開 15 分鐘 ──
+            if not acc.comment_enabled:
+                continue
+            for i, (hs, ms, he, me) in enumerate(_ENGAGE_WINDOWS):
+                cjob_id = f"comment_{acc.name}_w{i}"
+                try:
+                    sched.remove_job(cjob_id)
+                except Exception:
+                    pass
+                # 在時段內隨機選時間，確保比 engage 晚至少 15 分鐘
+                h, m = _random_time_in_window(hs, ms, he, me)
+                m_offset = m + 15
+                h = h + m_offset // 60
+                m = m_offset % 60
+                if h >= 24:
+                    h = 23
+                    m = 59
+                sched.add_job(
+                    run_comment_session, "cron",
+                    args=[acc],
+                    hour=h, minute=m,
+                    id=cjob_id,
+                )
+                print(f"[scheduler] {acc.name} 留言巡迴 時段{i+1} → {h:02d}:{m:02d}")
+
+                if catchup:
+                    window_end = he * 60 + me
+                    if now_total > window_end:
+                        print(f"[scheduler] {acc.name} 時段{i+1} 已過，立刻補跑（留言）")
+                        threading.Thread(
+                            target=run_comment_session, args=[acc], daemon=True
                         ).start()
 
     # 每天 00:01 重新隨機化各時段時間點
@@ -512,6 +554,10 @@ def build_parser():
     sp = sub.add_parser("photo-engage", help="手動觸發一次互動巡迴（按愛心）")
     sp.add_argument("--account", default="", help="指定帳號，不填則執行所有帳號")
     sp.set_defaults(func=cmd_photo_engage)
+
+    sp = sub.add_parser("photo-comment", help="手動觸發一次智慧留言巡迴")
+    sp.add_argument("--account", default="", help="指定帳號，不填則執行所有帳號")
+    sp.set_defaults(func=cmd_photo_comment)
 
     return p
 
