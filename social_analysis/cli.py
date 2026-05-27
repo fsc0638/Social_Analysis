@@ -399,6 +399,7 @@ def cmd_photo_schedule(args):
     from .photo_agent.agent import PhotoAgent
     from .photo_agent.engager import run_session
     from .photo_agent.commenter import run_comment_session
+    from .photo_agent.competitor_analyzer import run_competitor_analysis
     import random
     import threading
     from datetime import datetime as _dt
@@ -487,6 +488,21 @@ def cmd_photo_schedule(args):
                         threading.Thread(
                             target=run_comment_session, args=[acc], daemon=True
                         ).start()
+
+    # ── 競品分析排程：每天 03:00，各帳號輪流執行 ──
+    def _run_competitor_analysis_for_all():
+        for acc in accounts:
+            try:
+                run_competitor_analysis(acc)
+            except Exception as e:
+                print(f"[scheduler] {acc.name} 競品分析失敗: {e}")
+
+    sched.add_job(
+        _run_competitor_analysis_for_all, "cron",
+        hour=3, minute=0,
+        id="daily_competitor_analysis",
+    )
+    print("[scheduler] 競品分析 每天 03:00 自動執行")
 
     # 每天 00:01 重新隨機化各時段時間點
     sched.add_job(_schedule_engage_jobs, "cron", hour=0, minute=1, id="daily_reschedule")
