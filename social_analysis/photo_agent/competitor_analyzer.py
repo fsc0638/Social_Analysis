@@ -17,6 +17,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
+import re
+
 import httpx
 
 from .account_config import AccountConfig
@@ -233,19 +235,49 @@ def _save_report(username: str, analysis: str, user_info, n_sampled: int) -> Pat
 
 # ── 主流程 ───────────────────────────────────────────────────────────────────
 
-def run_competitor_analysis(
-    account: AccountConfig,
-    target_username: str | None = None,
-) -> list[str]:
-    """執行競品分析，回傳本次分析的帳號名稱列表。"""
+def _make_client(account: AccountConfig):
+    """建立並驗證 instagrapi Client，處理 GraphQL 被封鎖的備用登入流程。"""
     from instagrapi import Client
 
     cl = Client()
     session_file = Path("accounts") / account.name / "session.json"
     if session_file.exists():
         cl.load_settings(str(session_file))
-    cl.login_by_sessionid(unquote(account.ig_session_id))
-    print(f"[analyzer] @{account.name} 登入成功")
+
+    sid = unquote(account.ig_session_id)
+    try:
+        cl.login_by_sessionid(sid)
+    except Exception as e:
+        # 備用路徑：Instagram 封鎖 user_info_v1 / GraphQL 驗證時，
+        # 手動建立 session（跳過 API 驗證），讓後續 feed/hashtag API 自行決定是否有效。
+        print(f"  [login] login_by_sessionid 失敗（{type(e).__name__}），切換無驗證登入...")
+        user_id = re.search(r"^\d+", sid).group()
+        cl.settings["cookies"] = {"sessionid": sid}
+        cl.init()                                     # 設定 HTTP session 與 device headers
+        cl.authorization_data = {
+            "ds_user_id": user_id,
+            "sessionid": sid,
+            "should_use_header_over_cookies": True,
+        }
+        cl.private.cookies.set("ds_user_id", user_id)
+        cl.private.headers.update(cl.base_headers)
+        cl.private.headers.update({"Authorization": cl.authorization})
+        cl.username = account.ig_username
+        print(f"  [login] session 建立完成（@{cl.username}，略過 API 驗證）")
+
+    # 儲存 session 供下次使用（保留 device headers，避免重複被擋）
+    session_file.parent.mkdir(parents=True, exist_ok=True)
+    cl.dump_settings(str(session_file))
+    return cl
+
+
+def run_competitor_analysis(
+    account: AccountConfig,
+    target_username: str | None = None,
+) -> list[str]:
+    """執行競品分析，回傳本次分析的帳號名稱列表。"""
+    cl = _make_client(account)
+    print(f"[analyzer] @{account.ig_username} 登入成功")
 
     index = _load_index()
     analyzed = []
