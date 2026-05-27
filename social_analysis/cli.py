@@ -372,7 +372,10 @@ def cmd_photo_schedule(args):
             print(f"[scheduler] {acc.name} 每天 {t} 發文")
 
     print("[scheduler] 啟動，按 Ctrl+C 停止")
-    sched.start()
+    try:
+        sched.start()
+    except KeyboardInterrupt:
+        print("\n[scheduler] 已停止")
 
 
 def build_parser():
