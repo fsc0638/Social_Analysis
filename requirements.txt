@@ -8,6 +8,10 @@ plotly>=5.18
 anthropic>=0.40
 apscheduler>=3.10
 tenacity>=8.2
+pyyaml>=6.0
+openai>=1.0
+requests>=2.31
+instagrapi>=2.0
 # Platform collectors (optional, install as needed)
 # instaloader>=4.11
 # twscrape>=0.13

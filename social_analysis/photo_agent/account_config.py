@@ -34,6 +34,11 @@ class AccountConfig:
     # 此帳號的額外文案風格備註（附加到 prompt 尾端）
     caption_style: str = ""
 
+    # ── 互動增粉（engager）────────────────────────────
+    engage_hashtags: list = field(default_factory=list)
+    engage_max_per_session: int = 12
+    engage_daily_max: int = 80
+
     # ── 路徑 ──────────────────────────────────────────
     @property
     def base_dir(self) -> Path:

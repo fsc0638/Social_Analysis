@@ -1,6 +1,6 @@
 """Photo Agent：從帳號佇列取圖 → AI 文案 → 多平台發文。"""
 from .account_config import AccountConfig
-from .queue import PhotoQueue
+from .queue import PhotoQueue, _photo_datetime
 from .caption import generate_caption
 from .publishers.instagram import InstagramPublisher
 from .publishers.threads import ThreadsPublisher
@@ -28,7 +28,8 @@ class PhotoAgent:
         print(f"[{acc.name}] 處理: {photo.name}")
 
         try:
-            caption_text, hashtags = generate_caption(photo, acc.caption_style)
+            photo_date = _photo_datetime(photo)
+            caption_text, hashtags = generate_caption(photo, acc.caption_style, photo_date=photo_date)
             full_caption = f"{caption_text}\n{' '.join(hashtags)}"
         except Exception as e:
             print(f"[{acc.name}] 文案生成失敗，使用檔名: {e}")

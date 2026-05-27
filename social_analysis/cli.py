@@ -351,15 +351,46 @@ def cmd_photo_status(args):
             print(f"  {p.name}")
 
 
+def cmd_photo_engage(args):
+    """手動觸發一次互動巡迴。"""
+    from .photo_agent.engager import run_session
+    accounts = _load_accounts(args.account)
+    for acc in accounts:
+        run_session(acc)
+
+
+# 互動巡迴時段設定（每個時段在區間內隨機選一個時間點觸發）
+_ENGAGE_WINDOWS = [
+    (9, 30, 10, 0),    # 09:30–10:00
+    (12, 30, 13, 30),  # 12:30–13:30
+    (17, 0, 18, 0),    # 17:00–18:00
+    (21, 30, 22, 30),  # 21:30–22:30
+]
+
+
+def _random_time_in_window(h_start, m_start, h_end, m_end):
+    """在時段內隨機選一個 (hour, minute)。"""
+    import random
+    start_total = h_start * 60 + m_start
+    end_total = h_end * 60 + m_end
+    chosen = random.randint(start_total, end_total)
+    return chosen // 60, chosen % 60
+
+
 def cmd_photo_schedule(args):
     from apscheduler.schedulers.blocking import BlockingScheduler
+    from apscheduler.events import EVENT_JOB_EXECUTED
     from .photo_agent.agent import PhotoAgent
+    from .photo_agent.engager import run_session
+    import random
 
     accounts = _load_accounts(args.account)
     if not accounts:
         return
 
     sched = BlockingScheduler()
+
+    # ── 發文排程 ──────────────────────────────────────
     for acc in accounts:
         agent = PhotoAgent(acc)
         for t in [t.strip() for t in acc.schedule.split(",") if t.strip()]:
@@ -367,9 +398,35 @@ def cmd_photo_schedule(args):
             sched.add_job(
                 agent.run_once, "cron",
                 hour=hour, minute=minute,
-                id=f"{acc.name}_{t}",
+                id=f"post_{acc.name}_{t}",
             )
             print(f"[scheduler] {acc.name} 每天 {t} 發文")
+
+    # ── 互動巡迴排程（四個時段，每天重新隨機化時間點）──
+    def _schedule_engage_jobs():
+        """移除舊的 engage jobs 並重新以隨機時間點排入今天的巡迴。"""
+        for acc in accounts:
+            if not acc.engage_hashtags:
+                continue
+            for i, (hs, ms, he, me) in enumerate(_ENGAGE_WINDOWS):
+                job_id = f"engage_{acc.name}_w{i}"
+                try:
+                    sched.remove_job(job_id)
+                except Exception:
+                    pass
+                h, m = _random_time_in_window(hs, ms, he, me)
+                sched.add_job(
+                    run_session, "cron",
+                    args=[acc],
+                    hour=h, minute=m,
+                    id=job_id,
+                )
+                print(f"[scheduler] {acc.name} 互動巡迴 時段{i+1} → {h:02d}:{m:02d}")
+
+    # 每天 00:01 重新隨機化各時段時間點
+    sched.add_job(_schedule_engage_jobs, "cron", hour=0, minute=1, id="daily_reschedule")
+    # 啟動時先跑一次
+    _schedule_engage_jobs()
 
     print("[scheduler] 啟動，按 Ctrl+C 停止")
     try:
@@ -434,9 +491,13 @@ def build_parser():
     sp.add_argument("--account", default="", help="指定帳號，不填則顯示所有帳號")
     sp.set_defaults(func=cmd_photo_status)
 
-    sp = sub.add_parser("photo-schedule", help="啟動排程自動發文（依各帳號 config.yaml 的 schedule）")
+    sp = sub.add_parser("photo-schedule", help="啟動排程自動發文 + 互動巡迴")
     sp.add_argument("--account", default="", help="指定帳號，不填則執行所有帳號")
     sp.set_defaults(func=cmd_photo_schedule)
+
+    sp = sub.add_parser("photo-engage", help="手動觸發一次互動巡迴（按愛心）")
+    sp.add_argument("--account", default="", help="指定帳號，不填則執行所有帳號")
+    sp.set_defaults(func=cmd_photo_engage)
 
     return p
 

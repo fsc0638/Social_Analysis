@@ -1,6 +1,7 @@
 """用 GPT-4o Vision 分析照片，生成符合帳號風格的文案與 hashtag。"""
 import base64
 import json
+from datetime import datetime
 from pathlib import Path
 
 from ..config import settings
@@ -15,38 +16,44 @@ _DEFAULT_STYLE = """\
 _PROMPT_TEMPLATE = """\
 你是 Instagram 發文專家。依照下列步驟分析照片並輸出 JSON。
 
+【照片拍攝日期】
+{photo_date}
+請將此日期（格式 YYYYMMDD）作為文案的第一行，不要修改格式。
+
 【此帳號風格】
 {caption_style}
 
-【Hashtag 四步驟】
-1. 仔細觀察圖像：主體、場景、光線、細節
-2. 列出 20 個候選 hashtag（中英皆可，貼合圖像內容）
-3. 從 20 個中篩選出 5~10 個「受眾較集中」的 hashtag
-   - 優先選有明確社群的（如 #MINI #jimny #台灣街拍）
-   - 避免過於寬泛（如 #photo #life #beautiful 之類）
-4. 從照片判斷出地點或攝影風格，若不重複則加入最終清單
+【圖像深度分析（寫文案前必做）】
+請依序觀察以下四個面向，交叉判斷當下場景的語氣與情緒：
+1. 情境：發生了什麼事？主體在做什麼動作？
+2. 設備 / 道具：出現哪些物件或裝備？（車、相機、玩具、食物…）
+3. 環境：室內 / 室外？光線？天氣？地點特徵？
+4. 動物表情（若有動物請特別專注）：眼神、耳朵方向、嘴型、身體姿勢傳達出什麼情緒？
+→ 根據以上四點綜合判斷，決定文案要用什麼語氣
 
-【排版規則】
-- 正文前空一行（caption 欄位開頭放 \\n）
-- 每段不超過 2 句，段與段之間空行
-- 正文結尾空一行（caption 欄位結尾放 \\n）
-- 整體正文不超過 4 行
+【Hashtag 四步驟】
+1. 根據圖像分析結果，列出 20 個候選 hashtag（中英皆可）
+2. 從 20 個中篩選 5~10 個「受眾較集中」的 hashtag
+   - 優先選有明確社群的（如 #英短藍白 #jimny #台灣街拍 #minicooper）
+   - 避免過於寬泛（如 #photo #life #beautiful）
+3. 從照片判斷地點或攝影風格，若不重複則加入最終清單
 
 只輸出 JSON，不要其他文字：
 {{
-  "caption": "\\n正文內容\\n",
+  "caption": "正文（含日期與分隔線，不含 hashtag）",
   "candidate_hashtags": ["20個候選..."],
   "hashtags": ["最終5~10個"]
 }}"""
 
 
-def generate_caption(image_path: Path, caption_style: str = "") -> tuple[str, list[str]]:
+def generate_caption(image_path: Path, caption_style: str = "", photo_date: datetime | None = None) -> tuple[str, list[str]]:
     from openai import OpenAI
 
     suffix = image_path.suffix.lower()
     mime = _MIME_MAP.get(suffix, "image/jpeg")
     style = caption_style.strip() if caption_style.strip() else _DEFAULT_STYLE
-    prompt = _PROMPT_TEMPLATE.format(caption_style=style)
+    date_str = photo_date.strftime("%Y%m%d") if photo_date else datetime.now().strftime("%Y%m%d")
+    prompt = _PROMPT_TEMPLATE.format(caption_style=style, photo_date=date_str)
 
     with open(image_path, "rb") as f:
         b64 = base64.b64encode(f.read()).decode()
@@ -59,7 +66,7 @@ def generate_caption(image_path: Path, caption_style: str = "") -> tuple[str, li
             "role": "user",
             "content": [
                 {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "low"}},
+                {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"}},
             ],
         }],
     )
